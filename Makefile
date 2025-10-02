@@ -1,23 +1,23 @@
 
-TARGET= motor_control_unit
+TARGET = main
 
-CSTCS= $(TARGET).cpp 
-COBJS= $(CSRCS:.cpp=.o)
+CC = g++
+CFLAGS = -Wall
+DYNAMIC = -lpthread -lmysqlcppconn
 
-CC= g++
-CFFLAGS= -Wall
-DYNAMIC= -lpthread
+CSRCS = $(TARGET).cpp vehicle_control_unit.cpp battery_management_system.cpp motor_control_unit.cpp tel_control_unit.cpp trng.cpp
+COBJS = $(CSRCS:.cpp=.o)
 
 $(TARGET): $(COBJS)
-	$(CC) $^ -o $@ $(CFFLAGS) $(DYNAMIC)
+	$(CC) $^ -o $@ $(CFLAGS) $(DYNAMIC)
 
-$(COBJS):%.o: %.cpp
-	$(CC) $(CFFLAGS) -c $<
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c $<
 
-run:
+run: $(TARGET)
 	./$(TARGET)
 
 clean:
-	del *.o
+	rm -f *.o $(TARGET)
 
-.phony: run clean
+.PHONY: run clean

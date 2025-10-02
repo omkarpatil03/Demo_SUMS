@@ -10,6 +10,13 @@
 
 #include "battery_management_system.hpp"
 
+#define     BMS_CURRENT_TH      (300)
+
+extern int true_mcu_speed;
+extern int mcu_current;
+int bms_current= 0;
+int bms_current_th_counter= 0;
+
 //BMS CAN receiver thread
 void bms_can_receiver_task(void){
     int mySocket;
@@ -50,6 +57,7 @@ void bms_can_receiver_task(void){
             break;
         }
 
+        /*
         std::cout<<"[Receiver] BMS Got CAN frame: ID=0x"
                  <<std::hex<<frame.can_id
                  <<"DLC="<<std::dec<<int(frame.can_dlc)
@@ -60,6 +68,7 @@ void bms_can_receiver_task(void){
         }         
 
         std::cout<<std::dec<<std::endl;
+        */
     }
 
     close(mySocket);
@@ -99,14 +108,34 @@ void bms_can_sender_task(void){
     std::cout<<"[Sender] BMS started on vcaon0 ..."<<std::endl;
 
     struct can_frame frame;
-    frame.can_id= 0x456;
+    frame.can_id= 0xB1;
     frame.can_dlc= 8;
 
     while(1){
 
-        for(int i= 0; i<8; i++){
-            frame.data[i]= i*2;
+        //batt vtg
+        frame.data[0]= 0x1A;
+        frame.data[1]= 0x02;
+
+        bms_current= (true_mcu_speed * 3.66);
+        frame.data[2]= bms_current;
+        frame.data[3]= bms_current >> 8;
+        
+
+        //speed th counter
+        if(bms_current > BMS_CURRENT_TH){
+            frame.data[6]= bms_current_th_counter++;
         }
+
+    
+        //batt SoC
+        frame.data[5]= 0x52;
+        
+        //BMS status
+        frame.data[6]= 0x02;
+        
+        //BMS fault status
+        frame.data[7]= 0x0;
 
         int nbytes= write(mySocket, &frame, sizeof(struct can_frame));
 
@@ -115,32 +144,12 @@ void bms_can_sender_task(void){
             break;
         }
 
-        std::cout<<"[Sender] BMS sent frame #"<<std::endl;
+        //std::cout<<"[Sender] BMS sent frame #"<<std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
     }
 
     close(mySocket);
 }
 
-int main(void){
-
-    //start receiver in a separate thread
-    std::thread receiver(bms_can_receiver_task);
-    std::thread sender(bms_can_sender_task);
-    //main thread can do other work
-
-    /*
-    for(int i= 0; i < 10; i++){
-        std::cout<<"[Main thread work...]"<<i<<std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    */
-
-    //join the receiver if you want program to wait
-    receiver.join();
-    sender.join();
-
-    return 0;
-}

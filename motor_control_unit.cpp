@@ -9,6 +9,16 @@
 #include <net/if.h>
 
 #include "motor_control_unit.hpp"
+#include "trng.hpp"
+
+#define     MCU_SPEED_TH    80
+
+int mcu_speed= 0;
+int true_mcu_speed= 0;
+int mcu_current= 0;
+int mcu_speed_th_counter= 0;
+
+
 
 //MCU CAN receiver thread
 void mcu_can_receiver_task(void){
@@ -50,6 +60,7 @@ void mcu_can_receiver_task(void){
             break;
         }
 
+        /*
         std::cout<<"MCU [Receiver] Got CAN frame: ID=0x"
                  <<std::hex<<frame.can_id
                  <<"DLC="<<std::dec<<int(frame.can_dlc)
@@ -57,7 +68,8 @@ void mcu_can_receiver_task(void){
 
         for(int i= 0; i < frame.can_dlc; i++){
             std::cout<<std::hex<<int(frame.data[i])<<" ";
-        }         
+        }
+        */             
 
         std::cout<<std::dec<<std::endl;
     }
@@ -99,14 +111,41 @@ void mcu_can_sender_task(void){
     std::cout<<"[Sender] MCU started on vcaon0 ..."<<std::endl;
 
     struct can_frame frame;
-    frame.can_id= 0x123;
+    frame.can_id= 0x201;
     frame.can_dlc= 8;
 
     while(1){
 
-        for(int i= 0; i<8; i++){
-            frame.data[i]= i*1;
+        
+        mcu_speed= getTrueRandomNumber();
+
+        if(mcu_speed > 60){
+            frame.data[0]= mcu_speed;
+            true_mcu_speed= mcu_speed;
         }
+
+        //mcu speed byte reserved
+        frame.data[1]= 0x0;
+
+        //mcu dc voltage
+        frame.data[2]= 0x1A;
+        frame.data[3]= 0x01;
+
+
+        //mcu dc current
+        mcu_current= (true_mcu_speed * 3.56);
+
+        frame.data[4]= mcu_current;
+        frame.data[5]= mcu_current >> 8;
+
+        //speed th counter
+        if(true_mcu_speed > MCU_SPEED_TH){
+            frame.data[6]= mcu_speed_th_counter++;
+        }
+
+        //mcu reserved
+        
+        frame.data[7]= 0x0;
 
         int nbytes= write(mySocket, &frame, sizeof(struct can_frame));
 
@@ -115,32 +154,11 @@ void mcu_can_sender_task(void){
             break;
         }
 
-        std::cout<<"[Sender] MCU sent frame #"<<std::endl;
+        //std::cout<<"[Sender] MCU sent frame #"<<std::endl;
 
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     }
 
     close(mySocket);
-}
-
-int main(void){
-
-    //start receiver in a separate thread
-    std::thread receiver(mcu_can_receiver_task);
-    std::thread sender(mcu_can_sender_task);
-    //main thread can do other work
-
-    /*
-    for(int i= 0; i < 10; i++){
-        std::cout<<"[Main thread work...]"<<i<<std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    */
-
-    //join the receiver if you want program to wait
-    receiver.join();
-    sender.join();
-
-    return 0;
 }
